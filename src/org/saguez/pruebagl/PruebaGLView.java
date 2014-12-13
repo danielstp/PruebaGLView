@@ -34,8 +34,8 @@ public class PruebaGLView extends GLSurfaceView {
 
 		HashMap<String,Object> attrs = new HashMap<String,Object>();
 		attrs.put("translucent", true);
-		attrs.put("stencil", 8);
-		attrs.put("depth", 8);
+		attrs.put("stencil", 0);
+		attrs.put("depth", 0);
 		init(context, attrs);
 	}
 
