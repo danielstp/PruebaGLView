@@ -1,14 +1,28 @@
 package org.saguez.pruebagl;
 
+import javax.microedition.khronos.egl.EGL;
+
 import org.saguez.pruebagl.util.SystemUiHider;
 
-import android.annotation.TargetApi;
 import android.app.Activity;
-import android.os.Build;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.PorterDuff;
+import android.opengl.EGL14;
+import android.opengl.EGLContext;
+import android.opengl.GLES20;
 import android.os.Bundle;
-import android.os.Handler;
-import android.view.MotionEvent;
+import android.os.Trace;
+import android.util.Log;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
+
+import com.android.grafika.gles.EglCore;
+import com.android.grafika.gles.WindowSurface;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -16,144 +30,380 @@ import android.view.View;
  *
  * @see SystemUiHider
  */
-public class FullscreenActivity extends Activity {
-	PruebaGLView view;
-	/**
-	 * Whether or not the system UI should be auto-hidden after
-	 * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
-	 */
-	private static final boolean AUTO_HIDE = true;
+public class FullscreenActivity extends Activity implements
+		SurfaceHolder.Callback {
+	private static final String TAG = "FullscreenActivity";
 
-	/**
-	 * If {@link #AUTO_HIDE} is set, the number of milliseconds to wait after
-	 * user interaction before hiding the system UI.
-	 */
-	private static final int AUTO_HIDE_DELAY_MILLIS = 3000;
+	// Number of steps in each direction. There's actually N+1 positions because
+	// we
+	// don't re-draw the same position after a rebound.
+	private static final int BOUNCE_STEPS = 30;
 
-	/**
-	 * If set, will toggle the system UI visibility upon interaction. Otherwise,
-	 * will show the system UI visibility upon interaction.
-	 */
-	private static final boolean TOGGLE_ON_CLICK = true;
-
-	/**
-	 * The flags to pass to {@link SystemUiHider#getInstance}.
-	 */
-	private static final int HIDER_FLAGS = SystemUiHider.FLAG_HIDE_NAVIGATION;
-
-	/**
-	 * The instance of the {@link SystemUiHider} for this activity.
-	 */
-	private SystemUiHider mSystemUiHider;
+	private SurfaceView mSurfaceView1;
+	private SurfaceView mSurfaceView2;
+	private SurfaceView mSurfaceView3;
+	private volatile boolean mBouncing;
+	private Thread mBounceThread;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		view = new PruebaGLView(this);
+		setContentView(R.layout.activity_multi_surface_test);
 
-		//setContentView(R.layout.activity_fullscreen);
-		setContentView(view);
+		// #1 is at the bottom; mark it as secure just for fun. By default, this
+		// will use
+		// the RGB565 color format.
+		mSurfaceView1=attach(R.id.multiSurfaceView1);
 
-//		final View controlsView = findViewById(R.id.fullscreen_content_controls);
-		final View contentView = view;
+		// #2 is above it, in the "media overlay"; must be translucent or we
+		// will totally
+		// obscure #1 and it will be ignored by the compositor. The addition of
+		// the alpha
+		// plane should switch us to RGBA8888.
+		mSurfaceView2 = attach();//(SurfaceView) findViewById(R.id.multiSurfaceView2);
+		mSurfaceView2.setLeft(0);
+		mSurfaceView2.setBottom(100);
+		mSurfaceView2.setMinimumHeight(100);
+		mSurfaceView2.setMinimumWidth(100);
+		mSurfaceView2.getHolder().addCallback(this);
+		mSurfaceView2.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		mSurfaceView2.setZOrderMediaOverlay(true);
 
-		// Set up an instance of SystemUiHider to control the system UI for
-		// this activity.
-		mSystemUiHider = SystemUiHider.getInstance(this, contentView,
-				HIDER_FLAGS);
-		mSystemUiHider.setup();
-		mSystemUiHider
-				.setOnVisibilityChangeListener(new SystemUiHider.OnVisibilityChangeListener() {
-					// Cached values.
-					int mControlsHeight;
-					int mShortAnimTime;
+		// #3 is above everything, including the UI. Also translucent.
+		mSurfaceView3 = attach(R.id.multiSurfaceView3);
+		mSurfaceView3.getHolder().addCallback(this);
+		mSurfaceView3.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		mSurfaceView3.setZOrderOnTop(true);
+	}
 
-					@Override
-					@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR2)
-					public void onVisibilityChange(boolean visible) {
-						if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR2) {
-							// If the ViewPropertyAnimator API is available
-							// (Honeycomb MR2 and later), use it to animate the
-							// in-layout UI controls at the bottom of the
-							// screen.
-							if (mControlsHeight == 0) {
-//								mControlsHeight = controlsView.getHeight();
-							}
-							if (mShortAnimTime == 0) {
-								mShortAnimTime = getResources().getInteger(
-										android.R.integer.config_shortAnimTime);
-							}
-//							controlsView
-	//								.animate()
-		//							.translationY(visible ? 0 : mControlsHeight)
-			//						.setDuration(mShortAnimTime);
-						} else {
-							// If the ViewPropertyAnimator APIs aren't
-							// available, simply show or hide the in-layout UI
-							// controls.
-//							controlsView.setVisibility(visible ? View.VISIBLE
-	//								: View.GONE);
-						}
+	/**
+	 * @param multisurfacevie 
+	 * 
+	 */
+	private SurfaceView attach(int muuip) {
+		SurfaceView mSurfaceView = (SurfaceView) findViewById(muuip);
+		mSurfaceView.getHolder().addCallback(this);
+		mSurfaceView.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		mSurfaceView.setSecure(true);
+		return mSurfaceView;
+	}
+	private SurfaceView attach() {
+		SurfaceView mSurfaceView = new SurfaceView(this.getBaseContext());
+		mSurfaceView.getHolder().addCallback(this);
+		mSurfaceView.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		mSurfaceView.setSecure(true);
+		return mSurfaceView;
+	}
 
-						if (visible && AUTO_HIDE) {
-							// Schedule a hide().
-							delayedHide(AUTO_HIDE_DELAY_MILLIS);
-						}
-					}
-				});
 
-		// Set up the user interaction to manually show or hide the system UI.
-		contentView.setOnClickListener(new View.OnClickListener() {
+	@Override
+	protected void onPause() {
+		super.onPause();
+		if (mBounceThread != null) {
+			stopBouncing();
+		}
+	}
+
+	/**
+	 * onClick handler for "bounce" button.
+	 */
+	public void clickBounce(@SuppressWarnings("unused") View unused) {
+		Log.d(TAG, "clickBounce bouncing=" + mBouncing);
+		if (mBounceThread != null) {
+			stopBouncing();
+		} else {
+			startBouncing();
+		}
+	}
+
+	private void startBouncing() {
+		final Surface surface = mSurfaceView2.getHolder().getSurface();
+		if (surface == null || !surface.isValid()) {
+			Log.w(TAG, "mSurfaceView2 is not ready");
+			return;
+		}
+		mBounceThread = new Thread() {
 			@Override
-			public void onClick(View view) {
-				if (TOGGLE_ON_CLICK) {
-					mSystemUiHider.toggle();
-				} else {
-					mSystemUiHider.show();
+			public void run() {
+				while (true) {
+					long startWhen = System.nanoTime();
+					for (int i = 0; i < BOUNCE_STEPS; i++) {
+						if (!mBouncing)
+							return;
+						drawBouncingCircle(surface, i);
+					}
+					for (int i = BOUNCE_STEPS; i > 0; i--) {
+						if (!mBouncing)
+							return;
+						drawBouncingCircle(surface, i);
+					}
+					long duration = System.nanoTime() - startWhen;
+					double framesPerSec = 1000000000.0 / (duration / (BOUNCE_STEPS * 2.0));
+					Log.d(TAG, "Bouncing at " + framesPerSec + " fps");
 				}
 			}
-		});
+		};
+		mBouncing = true;
+		mBounceThread.setName("Bouncer");
+		mBounceThread.start();
+	}
+
+	/**
+	 * Signals the bounce-thread to stop, and waits for it to do so.
+	 */
+	private void stopBouncing() {
+		Log.d(TAG, "Stopping bounce thread");
+		mBouncing = false; // tell thread to stop
+		try {
+			mBounceThread.join();
+		} catch (InterruptedException ignored) {
+		}
+		mBounceThread = null;
+	}
+
+	/**
+	 * Returns an ordinal value for the SurfaceHolder, or -1 for an invalid
+	 * surface.
+	 */
+	private int getSurfaceId(SurfaceHolder holder) {
+		if (holder.equals(mSurfaceView1.getHolder())) {
+			return 1;
+		} else if (holder.equals(mSurfaceView2.getHolder())) {
+			return 2;
+		} else if (holder.equals(mSurfaceView3.getHolder())) {
+			return 3;
+		} else {
+			return -1;
+		}
 	}
 
 	@Override
-	protected void onPostCreate(Bundle savedInstanceState) {
-		super.onPostCreate(savedInstanceState);
+	public void surfaceCreated(SurfaceHolder holder) {
+		int id = getSurfaceId(holder);
+		if (id < 0) {
+			Log.w(TAG, "surfaceCreated UNKNOWN holder=" + holder);
+		} else {
+			Log.d(TAG, "surfaceCreated #" + id + " holder=" + holder);
 
-		// Trigger the initial hide() shortly after the activity has been
-		// created, to briefly hint to the user that UI controls
-		// are available.
-		delayedHide(100);
+		}
 	}
 
 	/**
-	 * Touch listener to use for in-layout UI controls to delay hiding the
-	 * system UI. This is to prevent the jarring behavior of controls going away
-	 * while interacting with activity UI.
+	 * SurfaceHolder.Callback method
+	 * <p>
+	 * Draws when the surface changes. Since nothing else is touching the
+	 * surface, and we're not animating, we just draw here and ignore it.
 	 */
-	View.OnTouchListener mDelayHideTouchListener = new View.OnTouchListener() {
-		@Override
-		public boolean onTouch(View view, MotionEvent motionEvent) {
-			if (AUTO_HIDE) {
-				delayedHide(AUTO_HIDE_DELAY_MILLIS);
+	@Override
+	public void surfaceChanged(SurfaceHolder holder, int format, int width,
+			int height) {
+		Log.d(TAG, "surfaceChanged fmt=" + format + " size=" + width + "x"
+				+ height + " holder=" + holder);
+
+		int id = getSurfaceId(holder);
+		boolean portrait = height > width;
+		GLWin win = enterGLContext(holder);
+		GLES20.glClearColor(0, 0, 0, 0);
+		GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+
+		GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+		switch (id) {
+		case 1:
+			//GLES20.glViewport(0, 0, 800, 600);
+			GLES20.glClearColor(0.0f, 0.0f, 0.5f, 0.25f);
+			GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+			// default lay: circle on left / top
+			if (portrait) {
+				//drawCircleSurface(surface, width / 2, height / 4, width / 4);
+			} else {
+				//drawCircleSurface(surface, width / 4, height / 2, height / 4);
 			}
-			return false;
+			break;
+		case 2:
+			//GLES20.glViewport(0, 600, 800, 1200);
+			GLES20.glClearColor(0.0f, 0.5f, 0.5f, 0.25f);
+			GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+			// media overlay layer: circle on right / bottom
+			if (portrait) {
+				//drawCircleSurface(surface, width / 2, height * 3 / 4, width / 4);
+			} else {
+				//drawCircleSurface(surface, width * 3 / 4, height / 2,
+						//height / 4);
+			}
+			break;
+		case 3:
+			//GLES20.glViewport(0, 1200, 800, 1800);
+			GLES20.glClearColor(0.5f, 0.0f, 0.5f, 0.25f);
+			GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+			// top layer: alpha stripes
+			if (portrait) {
+				int halfLine = width / 16 + 1;
+				//drawRectSurface(surface, width / 2 - halfLine, 0, halfLine * 2,
+				//		height);
+			} else {
+				int halfLine = height / 16 + 1;
+				//drawRectSurface(surface, 0, height / 2 - halfLine, width,
+					//	halfLine * 2);
+			}
+			break;
+		default:
+			throw new RuntimeException("wha?");
 		}
-	};
+		GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
 
-	Handler mHideHandler = new Handler();
-	Runnable mHideRunnable = new Runnable() {
-		@Override
-		public void run() {
-			mSystemUiHider.hide();
+		leaveGLContext(win);
+
+	}
+
+	public void leaveGLContext(GLWin win) {
+		win.release();
+	}
+	
+	private class GLWin {
+		public WindowSurface win;
+		public EglCore eglCore;
+		public void release() {
+			win.swapBuffers();
+			win.release();
+			eglCore.release();
 		}
-	};
+	}
+
+	private GLWin enterGLContext(SurfaceHolder holder) {
+		GLWin win = new GLWin();
+		Surface surface = holder.getSurface();
+		win.eglCore = new EglCore();
+		win.win = new WindowSurface(win.eglCore, surface, false);
+		win.win.makeCurrent();
+		return win;
+	}
+
+	@Override
+	public void surfaceDestroyed(SurfaceHolder holder) {
+		// ignore
+		Log.d(TAG, "Surface destroyed holder=" + holder);
+	}
 
 	/**
-	 * Schedules a call to hide() in [delay] milliseconds, canceling any
-	 * previously scheduled calls.
+	 * Clears the surface, then draws some alpha-blended rectangles with GL.
+	 * <p>
+	 * Creates a temporary EGL context just for the duration of the call.
 	 */
-	private void delayedHide(int delayMillis) {
-		mHideHandler.removeCallbacks(mHideRunnable);
-		mHideHandler.postDelayed(mHideRunnable, delayMillis);
+	private void drawRectSurface(Surface surface, int left, int top, int width,
+			int height) {
+		EglCore eglCore = new EglCore();
+		WindowSurface win = new WindowSurface(eglCore, surface, false);
+		win.makeCurrent();
+		GLES20.glClearColor(0, 0, 0, 0);
+		GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+
+		GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+		for (int i = 0; i < 4; i++) {
+			int x, y, w, h;
+			if (width < height) {
+				// vertical
+				w = width / 4;
+				h = height;
+				x = left + w * i;
+				y = top;
+			} else {
+				// horizontal
+				w = width;
+				h = height / 4;
+				x = left;
+				y = top + h * i;
+			}
+			GLES20.glScissor(x, y, w, h);
+			switch (i) {
+			case 0: // 50% blue at 25% alpha, pre-multiplied
+				GLES20.glClearColor(0.0f, 0.5f, 0.125f, 0.25f);
+				break;
+			case 1: // 100% blue at 25% alpha, pre-multiplied
+				GLES20.glClearColor(0.5f, 0.0f, 0.25f, 0.25f);
+				break;
+			case 2: // 200% blue at 25% alpha, pre-multiplied (should get
+					// clipped)
+				GLES20.glClearColor(0.0f, 0.0f, 0.5f, 0.25f);
+				break;
+			case 3: // 100% white at 25% alpha, pre-multiplied
+				GLES20.glClearColor(0.75f, 0.25f, 0.25f, 0.25f);
+				break;
+			}
+			GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+		}
+		GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+
+		win.swapBuffers();
+		win.release();
+		eglCore.release();
 	}
+
+	/**
+	 * Clears the surface, then draws a filled circle with a shadow.
+	 * <p>
+	 * The Canvas drawing we're doing may not be fully implemented for
+	 * hardware-accelerated renderers (shadow layers only supported for text).
+	 * However, Surface#lockCanvas() currently only returns an unaccelerated
+	 * Canvas, so it all comes out looking fine.
+	 */
+	private void drawCircleSurface(Surface surface, int x, int y, int radius) {
+		Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		paint.setColor(Color.WHITE);
+		paint.setStyle(Paint.Style.FILL);
+		paint.setShadowLayer(radius / 4 + 1, 0, 0, Color.RED);
+
+		Canvas canvas = surface.lockCanvas(null);
+		try {
+			Log.v(TAG,
+					"drawCircleSurface: isHwAcc="
+							+ canvas.isHardwareAccelerated());
+			canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+			canvas.drawCircle(x, y, radius, paint);
+		} finally {
+			surface.unlockCanvasAndPost(canvas);
+		}
+	}
+
+	/**
+	 * Clears the surface, then draws a filled circle with a shadow.
+	 * <p>
+	 * Similar to drawCircleSurface(), but the position changes based on the
+	 * value of "i".
+	 */
+	private void drawBouncingCircle(Surface surface, int i) {
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.WHITE);
+        paint.setStyle(Paint.Style.FILL);
+
+        Canvas canvas = surface.lockCanvas(null);
+        try {
+        	
+            Trace.beginSection("drawBouncingCircle");
+            Trace.beginSection("drawColor");
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            Trace.endSection(); // drawColor
+
+            int width = canvas.getWidth();
+            int height = canvas.getHeight();
+            int radius, x, y;
+            if (width < height) {
+                // portrait
+                radius = width / 4;
+                x = width / 4 + ((width / 2 * i) / BOUNCE_STEPS);
+                y = height * 3 / 4;
+            } else {
+                // landscape
+                radius = height / 4;
+                x = width * 3 / 4;
+                y = height / 4 + ((height / 2 * i) / BOUNCE_STEPS);
+            }
+
+            paint.setShadowLayer(radius / 4 + 1, 0, 0, Color.RED);
+
+            canvas.drawCircle(x, y, radius, paint);
+            Trace.endSection(); // drawBouncingCircle
+        } finally {
+            surface.unlockCanvasAndPost(canvas);
+        }
+    }
 }

@@ -4,5 +4,7 @@
     <string name="app_name">pruebaGL</string>
     <string name="dummy_button">Dummy Button</string>
     <string name="dummy_content">DUMMY\nCONTENT</string>
+    <string name="bounce">prueba</string>
+    <string name="multiSurfaceMessage">mensaje</string>
 
 </resources>

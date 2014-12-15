@@ -14,7 +14,6 @@ import android.content.Context;
 import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
-import android.util.AttributeSet;
 import android.util.Log;
 
 /**
@@ -24,7 +23,7 @@ import android.util.Log;
 public class PruebaGLView extends GLSurfaceView {
 	private static final String TAG = "PruebaGLView";
 	PruebaRenderer renderer;
-	public static final boolean DEBUG = true;
+	public static final boolean DEBUG = false;
 
 	/**
 	 * @param context
@@ -32,14 +31,14 @@ public class PruebaGLView extends GLSurfaceView {
 	public PruebaGLView(Context context) {
 		super(context);
 
-		HashMap<String,Object> attrs = new HashMap<String,Object>();
+		HashMap<String, Object> attrs = new HashMap<String, Object>();
 		attrs.put("translucent", true);
 		attrs.put("stencil", 0);
 		attrs.put("depth", 0);
 		init(context, attrs);
 	}
 
-	private void init(Context context, HashMap<String,Object> attrs) {
+	private void init(Context context, HashMap<String, Object> attrs) {
 		renderer = new PruebaRenderer(this);
 		setEGLContextClientVersion(2);
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
@@ -54,7 +53,8 @@ public class PruebaGLView extends GLSurfaceView {
 		 * using PixelFormat.TRANSLUCENT for GL Surfaces is interpreted as any
 		 * 32-bit surface with alpha by SurfaceFlinger.
 		 */
-		boolean translucent =  attrs.containsKey("translucent")?(boolean)attrs.get("translucent"):true;
+		boolean translucent = attrs.containsKey("translucent") ? (boolean) attrs
+				.get("translucent") : true;
 		if (translucent) {
 			this.getHolder().setFormat(PixelFormat.TRANSLUCENT);
 		}
@@ -63,8 +63,9 @@ public class PruebaGLView extends GLSurfaceView {
 		 * definition below
 		 */
 		setEGLContextFactory(new ContextFactory());
-		int depth   = attrs.containsKey("depth")?(int)attrs.get("depth"):8;
-		int stencil = attrs.containsKey("stencil")?(int)attrs.get("stencil"):8;
+		int depth = attrs.containsKey("depth") ? (int) attrs.get("depth") : 8;
+		int stencil = attrs.containsKey("stencil") ? (int) attrs.get("stencil")
+				: 8;
 		/*
 		 * We need to choose an EGLConfig that matches the format of our surface
 		 * exactly. This is going to be done in our custom config chooser. See
@@ -81,39 +82,9 @@ public class PruebaGLView extends GLSurfaceView {
 	 * @param context
 	 * @param attrs
 	 */
-	public PruebaGLView(Context context, HashMap<String,Object> attrs) {
+	public PruebaGLView(Context context, HashMap<String, Object> attrs) {
 		super(context);
 		init(context, attrs);
-	}
-
-	private static void checkEglError(String prompt, EGL10 egl) {
-		int error;
-		while ((error = egl.eglGetError()) != EGL10.EGL_SUCCESS) {
-			Log.e(TAG, String.format("%s: EGL error: 0x%x", prompt, error));
-		}
-	}
-
-	private static class ContextFactory implements
-			GLSurfaceView.EGLContextFactory {
-
-		private static int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
-
-		public EGLContext createContext(EGL10 egl, EGLDisplay display,
-				EGLConfig eglConfig) {
-			Log.w(TAG, "creating OpenGL ES 2.0 context");
-			checkEglError("Before eglCreateContext", egl);
-			int[] attrib_list = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL10.EGL_NONE };
-			EGLContext context = egl.eglCreateContext(display, eglConfig,
-					EGL10.EGL_NO_CONTEXT, attrib_list);
-			checkEglError("After eglCreateContext", egl);
-			Log.w(TAG, "OpenGL ES 2.0 context created");
-			return context;
-		}
-
-		public void destroyContext(EGL10 egl, EGLDisplay display,
-				EGLContext context) {
-			egl.eglDestroyContext(display, context);
-		}
 	}
 
 	private static class ConfigChooser implements
