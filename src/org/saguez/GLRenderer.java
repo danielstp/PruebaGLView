@@ -24,7 +24,7 @@ public class GLRenderer implements Renderer {
 	 * 
 	 */
 	public GLRenderer(GLView glView) {
-		float alphaBase = 1	;
+		float alphaBase = 1f;
 		mColors = new Vector<CustColor>();
 		CustColor color = new CustColor();
 		color.setAlpha(1f*alphaBase);

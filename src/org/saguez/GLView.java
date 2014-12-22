@@ -14,6 +14,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.view.SurfaceHolder;
+import android.view.View;
 import android.widget.FrameLayout;
 
 /**
@@ -22,6 +23,7 @@ import android.widget.FrameLayout;
  */
 public class GLView extends GLSurfaceView implements SurfaceHolder.Callback {
 
+//	private static final String TAG = "GLView";
 	private SurfaceHolder mHolder = null;
 	private GLRenderer mRenderer = null;
 	private ContextFactory mContextFactory = null;
@@ -46,6 +48,10 @@ public class GLView extends GLSurfaceView implements SurfaceHolder.Callback {
 	}
 
 	private EGLContext attach(boolean translucent, int i, int j) {
+//		setZOrderMediaOverlay(false);
+		setZOrderOnTop(true);
+		// setLayoutDirection(LAYOUT_DIRECTION_LOCALE);
+		// mLayout.setLayoutMode(ViewGroup.LAYOUT_MODE_CLIP_BOUNDS);
 		mChilds = new Vector<GLView>();
 		mLayout = new FrameLayout(this.getContext());
 		mHolder = getHolder();
@@ -86,37 +92,61 @@ public class GLView extends GLSurfaceView implements SurfaceHolder.Callback {
 		setRenderer(mRenderer);
 		setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
 		mLayout.addView(this);
-
 		return mContextFactory.getLastContext();
 	}
-	
+
 	public FrameLayout getLayout() {
 		return mLayout;
 	}
-	
+
 	public void setHeight(int h) {
 		getLayoutParams().height = h;
 	}
-	
+
 	public void setWidth(int w) {
 		getLayoutParams().width = w;
 	}
-	
+
 	public void addGLView(GLView glview) {
-		if(this == glview) return;
+		if (this == glview)
+			return;
 		mChilds.add(glview);
 		orderGLViews();
 	}
-	
+
 	public void orderGLViews() {
-		mLayout.removeAllViews();
-		for(int d = mChilds.size();d>0;d--) {
-			GLView o = mChilds.get(d-1);
-			mLayout.addView(o.getLayout());
-			o.setX(o.getX()+getX());
-			o.setY(o.getY()+getY());
-			o.orderGLViews();
+		int count = mLayout.getChildCount();
+		Vector<View> vViews = new Vector<View>();
+		for (int c = 0; c < count; c++) {
+			if (!(mLayout.getChildAt(c) instanceof GLView)
+					&& !containGLView(mLayout.getChildAt(c))) {
+				vViews.add(mLayout.getChildAt(c));
+			}
 		}
+		mLayout.removeAllViews();
+		for (int d = mChilds.size(); d > 0; d--) {
+			GLView o = mChilds.get(d - 1);
+			o.setZOrderOnTop(true);
+			o.orderGLViews();
+			mLayout.addView(o.getLayout());
+		}
+		this.setZOrderMediaOverlay(true);
 		mLayout.addView(this);
+		for (View view : vViews) {
+			if (!(view instanceof GLView)) {
+				mLayout.addView(view);
+			}
+		}
+	}
+
+	private boolean containGLView(View childAt) {
+		if (childAt instanceof FrameLayout) {
+			int count = ((FrameLayout) childAt).getChildCount();
+			for (int c = 0; c < count; c++) {
+				if (((FrameLayout) childAt).getChildAt(c) instanceof GLView)
+					return true;
+			}
+		}
+		return false;
 	}
 }
